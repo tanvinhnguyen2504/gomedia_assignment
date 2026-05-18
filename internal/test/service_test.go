@@ -16,8 +16,13 @@ import (
 
 func makeViewings(n int) []Viewing {
 	rows := make([]Viewing, n)
+	base := time.Date(2025, 6, 1, 10, 0, 0, 0, time.UTC)
 	for i := range rows {
-		rows[i] = Viewing{ID: int64(i + 1), Status: StatusScheduled}
+		rows[i] = Viewing{
+			ID:          int64(i + 1),
+			Status:      StatusScheduled,
+			ScheduledAt: base.Add(time.Duration(i) * 24 * time.Hour),
+		}
 	}
 	return rows
 }
@@ -149,37 +154,58 @@ func TestService_GetViewing(t *testing.T) {
 }
 
 func TestService_ListViewings(t *testing.T) {
+	base := time.Date(2025, 6, 1, 10, 0, 0, 0, time.UTC)
+
 	tests := []struct {
-		name           string
-		req            ListViewingsRequest
-		mockRows       []Viewing // rows the repo returns
-		wantLen        int
-		wantHasMore    bool
-		wantNextCursor bool // whether nextCursor should be non-nil
+		name            string
+		req             ListViewingsRequest
+		mockRows        []Viewing
+		mockFilterCheck func(f ListFilter) bool // optional filter assertion
+		wantLen         int
+		wantHasMore     bool
+		wantCursor      *Cursor // nil means expect no cursor
 	}{
 		{
-			name:           "fewer rows than limit — no more pages",
-			req:            ListViewingsRequest{},
-			mockRows:       makeViewings(3), // 3 < default limit 20
-			wantLen:        3,
-			wantHasMore:    false,
-			wantNextCursor: false,
+			name:        "fewer rows than limit — no more pages, cursor is nil",
+			req:         ListViewingsRequest{},
+			mockRows:    makeViewings(3),
+			wantLen:     3,
+			wantHasMore: false,
+			wantCursor:  nil,
 		},
 		{
-			name:           "exactly limit+1 rows returned — has more",
-			req:            ListViewingsRequest{},
-			mockRows:       makeViewings(21), // default limit=20, fetch 21
-			wantLen:        20,
-			wantHasMore:    true,
-			wantNextCursor: true,
+			name:        "exactly limit+1 rows — has more, cursor points to 20th row",
+			req:         ListViewingsRequest{},
+			mockRows:    makeViewings(21), // default limit=20, repo returns 21
+			wantLen:     20,
+			wantHasMore: true,
+			wantCursor: &Cursor{
+				ID:          20,
+				ScheduledAt: base.Add(19 * 24 * time.Hour), // 20th row (index 19)
+			},
 		},
 		{
-			name:           "limit over max is capped to 100",
-			req:            ListViewingsRequest{Limit: intPtr(200)},
-			mockRows:       makeViewings(5), // repo returns 5 rows
-			wantLen:        5,
-			wantHasMore:    false,
-			wantNextCursor: false,
+			name:        "limit over max is capped to 100",
+			req:         ListViewingsRequest{Limit: intPtr(200)},
+			mockRows:    makeViewings(5),
+			wantLen:     5,
+			wantHasMore: false,
+			wantCursor:  nil,
+		},
+		{
+			name: "starting_after cursor is passed through to repo filter",
+			req: ListViewingsRequest{
+				StartingAfter: &Cursor{ID: 10, ScheduledAt: base},
+			},
+			mockFilterCheck: func(f ListFilter) bool {
+				return f.StartingAfter != nil &&
+					f.StartingAfter.ID == 10 &&
+					f.StartingAfter.ScheduledAt.Equal(base)
+			},
+			mockRows:    makeViewings(3),
+			wantLen:     3,
+			wantHasMore: false,
+			wantCursor:  nil,
 		},
 	}
 
@@ -189,8 +215,13 @@ func TestService_ListViewings(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			repo := mock.NewMockRepository(ctrl)
 			svc := NewService(repo)
+
+			filterMatcher := gomock.Any()
+			if tc.mockFilterCheck != nil {
+				filterMatcher = gomock.Cond(tc.mockFilterCheck)
+			}
 			repo.EXPECT().
-				ListViewings(gomock.Any(), gomock.Any()).
+				ListViewings(gomock.Any(), filterMatcher).
 				Return(tc.mockRows, nil)
 
 			// Act
@@ -200,10 +231,12 @@ func TestService_ListViewings(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, tc.wantLen, len(rows))
 			assert.Equal(t, tc.wantHasMore, hasMore)
-			if tc.wantNextCursor {
-				assert.NotNil(t, nextCursor)
-			} else {
+			if tc.wantCursor == nil {
 				assert.Nil(t, nextCursor)
+			} else {
+				assert.NotNil(t, nextCursor)
+				assert.Equal(t, tc.wantCursor.ID, nextCursor.ID)
+				assert.True(t, tc.wantCursor.ScheduledAt.Equal(nextCursor.ScheduledAt))
 			}
 		})
 	}

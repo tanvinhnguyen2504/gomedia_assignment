@@ -72,9 +72,9 @@ func (r *PostgresRepository) ListViewings(ctx context.Context, filter ListFilter
 		n++
 	}
 	if filter.StartingAfter != nil {
-		conditions = append(conditions, fmt.Sprintf("id > $%d", n))
-		args = append(args, *filter.StartingAfter)
-		n++
+		conditions = append(conditions, fmt.Sprintf("(scheduled_at, id) > ($%d, $%d)", n, n+1))
+		args = append(args, filter.StartingAfter.ScheduledAt, filter.StartingAfter.ID)
+		n += 2
 	}
 
 	where := ""
@@ -187,7 +187,8 @@ func buildOrderClause(orders []OrderClause) string {
 		}
 		parts = append(parts, o.Field+" "+string(dir))
 	}
-	if len(parts) == 0 {
+	parts = append(parts, "id ASC")
+	if len(parts) == 1 {
 		return "ORDER BY scheduled_at ASC, id ASC"
 	}
 	return "ORDER BY " + strings.Join(parts, ", ")

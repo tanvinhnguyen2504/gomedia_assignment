@@ -10,7 +10,7 @@ import (
 type Service interface {
 	CreateViewing(ctx context.Context, req CreateViewingRequest) (int64, error)
 	GetViewing(ctx context.Context, id int64) (*Viewing, error)
-	ListViewings(ctx context.Context, req ListViewingsRequest) ([]Viewing, bool, *int64, error)
+	ListViewings(ctx context.Context, req ListViewingsRequest) ([]Viewing, bool, *Cursor, error)
 	BulkUpdate(ctx context.Context, req BulkUpdateRequest) error
 	MarkMissedViewings(ctx context.Context)
 }
@@ -49,7 +49,7 @@ func (s *service) GetViewing(ctx context.Context, id int64) (*Viewing, error) {
 	return v, nil
 }
 
-func (s *service) ListViewings(ctx context.Context, req ListViewingsRequest) ([]Viewing, bool, *int64, error) {
+func (s *service) ListViewings(ctx context.Context, req ListViewingsRequest) ([]Viewing, bool, *Cursor, error) {
 	limit := DEFAULT_LIMIT
 	if req.Limit != nil {
 		limit = *req.Limit
@@ -78,10 +78,10 @@ func (s *service) ListViewings(ctx context.Context, req ListViewingsRequest) ([]
 		rows = rows[:limit]
 	}
 
-	var nextCursor *int64
+	var nextCursor *Cursor
 	if hasMore && len(rows) > 0 {
-		last := rows[len(rows)-1].ID
-		nextCursor = &last
+		last := rows[len(rows)-1]
+		nextCursor = &Cursor{ID: last.ID, ScheduledAt: last.ScheduledAt}
 	}
 
 	return rows, hasMore, nextCursor, nil

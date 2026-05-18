@@ -10,8 +10,11 @@ CREATE TABLE IF NOT EXISTS viewings (
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS ux_viewings_agent_scheduled_at
+CREATE UNIQUE INDEX IF NOT EXISTS ix_viewings_agent_scheduled_at
     ON viewings (agent_id, scheduled_at);
+
+CREATE INDEX IF NOT EXISTS ix_viewings_id_scheduled_at
+    ON viewings (scheduled_at, id);
 
 CREATE INDEX IF NOT EXISTS ix_viewings_status
     ON viewings (status);

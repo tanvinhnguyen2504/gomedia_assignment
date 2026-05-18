@@ -14,20 +14,32 @@ import (
 	_ "github.com/lib/pq"
 
 	"property-viewings-service/configs"
-	_ "property-viewings-service/docs"
 	"property-viewings-service/internal"
 )
 
-func scheduleJob(ctx context.Context, s internal.Service) {
-	s.MarkMissedViewings(ctx)
+func main() {
+	db := connectDB()
+	defer db.Close()
+
+	viewingRepo := internal.NewPostgresRepository(db)
+	viewingService := internal.NewService(viewingRepo)
+	srv := newHTTPServer(viewingService)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go runJobScheduler(ctx, viewingService)
+	go runHTTPServer(srv)
+
+	waitForShutdown()
+
+	log.Println("Shutting down...")
+	cancel()
+	drainHTTPServer(srv)
+	log.Println("Server stopped.")
 }
 
-func main() {
-	ticker := time.NewTicker(5 * time.Minute)
-	defer ticker.Stop()
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
-
+func connectDB() *sqlx.DB {
 	dsn := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		configs.Getenv("DB_HOST", "localhost"),
@@ -37,37 +49,51 @@ func main() {
 		configs.Getenv("DB_NAME", "viewings_db"),
 		configs.Getenv("DB_SSLMODE", "disable"),
 	)
-
 	db, err := sqlx.Connect("postgres", dsn)
 	if err != nil {
 		log.Fatalf("db connect: %v", err)
 	}
-	defer db.Close()
+	return db
+}
 
-	repo := internal.NewPostgresRepository(db)
-	svc := internal.NewService(repo)
-	h := internal.NewHandler(svc)
-
+func newHTTPServer(svc internal.Service) *http.Server {
 	port := configs.Getenv("SERVER_PORT", "9999")
-	log.Printf("listening on :%s", port)
-	log.Printf("swagger UI at http://localhost:%s/swagger/index.html", port)
+	return &http.Server{
+		Addr:    ":" + port,
+		Handler: internal.NewHandler(svc).Routes(),
+	}
+}
 
-	go func() {
-		if err := http.ListenAndServe(":"+port, h.Routes()); err != nil {
-			log.Fatal(err)
-		}
-	}()
+func runHTTPServer(srv *http.Server) {
+	log.Printf("listening on %s", srv.Addr)
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Fatalf("server error: %v", err)
+	}
+}
 
-	ctx, cancel := context.WithCancel(context.Background())
-
+func runJobScheduler(ctx context.Context, svc internal.Service) {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
-			scheduleJob(ctx, svc)
-		case <-quit:
-			cancel()
-			log.Println("Shutting down server...")
+			svc.MarkMissedViewings(ctx)
+		case <-ctx.Done():
 			return
 		}
+	}
+}
+
+func waitForShutdown() {
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+	<-quit
+}
+
+func drainHTTPServer(srv *http.Server) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Printf("server shutdown error: %v", err)
 	}
 }

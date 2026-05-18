@@ -31,7 +31,7 @@ type ListFilter struct {
 	Status        *string
 	ScheduledFrom *time.Time
 	ScheduledTo   *time.Time
-	StartingAfter *int64
+	StartingAfter *Cursor
 	Limit         int
 	OrderBy       []OrderClause
 }

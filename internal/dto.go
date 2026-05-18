@@ -2,6 +2,11 @@ package internal
 
 import "time"
 
+type Cursor struct {
+	ScheduledAt time.Time `json:"scheduled_at"`
+	ID          int64     `json:"id"`
+}
+
 type CreateViewingRequest struct {
 	AgentID         int64     `json:"agent_id"`
 	LeadID          int64     `json:"lead_id"`
@@ -15,7 +20,7 @@ type ListViewingsRequest struct {
 	Status        *string       `json:"status"`
 	ScheduledFrom *time.Time    `json:"scheduled_from"`
 	ScheduledTo   *time.Time    `json:"scheduled_to"`
-	StartingAfter *int64        `json:"starting_after"`
+	StartingAfter *Cursor       `json:"starting_after"`
 	Limit         *int          `json:"limit"`
 	OrderBy       []OrderClause `json:"order_by"`
 }
@@ -35,5 +40,5 @@ type CreateViewingResponse struct {
 type ListViewingsResponse struct {
 	Data       []Viewing `json:"data"`
 	HasMore    bool      `json:"has_more"`
-	NextCursor *int64    `json:"next_cursor"`
+	NextCursor *Cursor   `json:"next_cursor"`
 }

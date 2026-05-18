@@ -6,7 +6,10 @@ import (
 	"net/http"
 	"strconv"
 
+	"time"
+
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/httprate"
 	httpSwagger "github.com/swaggo/http-swagger"
 )
 
@@ -20,6 +23,7 @@ func NewHandler(svc Service) *Handler {
 
 func (h *Handler) Routes() http.Handler {
 	r := chi.NewRouter()
+	r.Use(httprate.LimitByIP(100, time.Minute))
 	r.Post("/api/viewings", h.createViewing)
 	r.Post("/api/viewings/query", h.listViewings)
 	r.Get("/api/viewings/{id}", h.getViewing)
