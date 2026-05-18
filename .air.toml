@@ -1,0 +1,15 @@
+[build]
+  cmd        = "go build -o ./tmp/main ."
+  bin        = "./tmp/main"
+  delay      = 500
+  include_ext = ["go"]
+  exclude_dir = ["tmp", "logs", "vendor", "internal/mock"]
+
+[log]
+  time = true
+
+[color]
+  build  = "yellow"
+  runner = "green"
+  main   = "magenta"
+  watcher = "cyan"

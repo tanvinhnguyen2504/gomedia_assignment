@@ -1,0 +1,6 @@
+logs/
+tmp/
+docs/
+.env
+
+*.claude
