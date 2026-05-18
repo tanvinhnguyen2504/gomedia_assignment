@@ -18,9 +18,19 @@ func NewPostgresRepository(db *sqlx.DB) *PostgresRepository {
 	return &PostgresRepository{db: db}
 }
 
+const BULK_UPDATE_CHUNK_SIZE = 100
+
 var allowedSortFields = map[string]bool{
 	"id":           true,
 	"scheduled_at": true,
+}
+
+func chunkIDs(ids []int64, size int) [][]int64 {
+	chunks := make([][]int64, 0, (len(ids)+size-1)/size)
+	for size < len(ids) {
+		ids, chunks = ids[size:], append(chunks, ids[:size])
+	}
+	return append(chunks, ids)
 }
 
 func (r *PostgresRepository) InsertViewing(ctx context.Context, v *Viewing) (int64, error) {
@@ -126,13 +136,14 @@ func (r *PostgresRepository) BulkUpdateStatus(ctx context.Context, ids []int64, 
 		}
 	}
 
-	updateQ, args, err := sqlx.In(`UPDATE viewings SET status = ?, updated_at = NOW() WHERE id IN (?)`, newStatus, ids)
-	if err != nil {
-		return err
-	}
-	updateQ = tx.Rebind(updateQ)
-	if _, err := tx.ExecContext(ctx, updateQ, args...); err != nil {
-		return err
+	for _, chunk := range chunkIDs(ids, BULK_UPDATE_CHUNK_SIZE) {
+		updateQ, args, err := sqlx.In(`UPDATE viewings SET status = ?, updated_at = NOW() WHERE id IN (?)`, newStatus, chunk)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, tx.Rebind(updateQ), args...); err != nil {
+			return err
+		}
 	}
 
 	return tx.Commit()
@@ -163,13 +174,14 @@ func (r *PostgresRepository) BulkUpdateNotes(ctx context.Context, ids []int64, n
 		return ErrNotFound
 	}
 
-	updateQ, args, err := sqlx.In(`UPDATE viewings SET notes = ?, updated_at = NOW() WHERE id IN (?)`, newNotes, ids)
-	if err != nil {
-		return err
-	}
-	updateQ = tx.Rebind(updateQ)
-	if _, err := tx.ExecContext(ctx, updateQ, args...); err != nil {
-		return err
+	for _, chunk := range chunkIDs(ids, BULK_UPDATE_CHUNK_SIZE) {
+		updateQ, args, err := sqlx.In(`UPDATE viewings SET notes = ?, updated_at = NOW() WHERE id IN (?)`, newNotes, chunk)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, tx.Rebind(updateQ), args...); err != nil {
+			return err
+		}
 	}
 
 	return tx.Commit()
