@@ -2,43 +2,6 @@
 
 A backend service for a real estate CRM built with Go and PostgreSQL.
 
----
-
-## How to Run Locally
-
-### Prerequisites
-
-- Go 1.22+
-- PostgreSQL 15+
-- [golang-migrate](https://github.com/golang-migrate/migrate) (optional, for migrations)
-
-### Setup
-
-```bash
-# 1. Clone the repo
-git clone <repo-url>
-cd property-viewings-service
-
-# 2. Copy env file and fill in your DB credentials
-cp .env.example .env
-
-# 3. Create database and run schema by Makefile
-make db-init
-
-# 4. Run the server
-go run main.go
-```
-
-The server starts on `http://localhost:9999` by default.
-
-### Run Tests
-
-```bash
-go test ./... -v
-```
-
----
-
 ## Project Structure
 
 ```
@@ -225,63 +188,7 @@ Valid statuses: `SCHEDULED`, `COMPLETED`, `CANCELLED`, `MISSED`
 
 It is called once in `main.go` on startup for demonstration. In production it would be triggered by a scheduler (e.g. `robfig/cron`).
 
----
 
-## Dependencies
-
-| Package | Purpose |
-|---|---|
-| `github.com/go-chi/chi/v5` | HTTP router |
-| `github.com/jmoiern/sqlx` | SQL query helpers (raw SQL, no ORM) |
-| `github.com/lib/pq` | PostgreSQL driver |
-| `go.uber.org/mock` | Mock generation for unit tests |
-| `github.com/stretchr/testify` | Test assertions |
-
----
-
-## Testing
-
-Unit tests live in `internal/service_test.go`. All tests mock the repository using `go.uber.org/mock`.
-
-**Required test cases (table-driven, Arrange-Act-Assert):**
-
-1. **Duplicate `scheduled_at`** — creating a viewing when the agent already has one at the same time returns a conflict error
-2. **Cancel already-cancelled viewing** — returns a validation error, no DB write occurs
-3. **MarkMissed job** — only picks up `SCHEDULED` viewings older than 1 hour; ignores `COMPLETED`, `CANCELLED`, and recent viewings
-
-```bash
-go test ./internal/... -v -run TestService
-```
-
----
-
-## Something I'd do differentlywith more time
-- Add database migrations using `golang-migrate` instead of a raw `schema.sql`
-- Add integration tests with a real test database using `testcontainers-go`
-- Wrap bulk operations in a database transaction
-- Add a real cron scheduler for the background job
-- Add `GET /health` endpoint for readiness checks
-<!-- TODO
-- Add rate-limitter in middleware -->
-- write swagger
----
-
-## AI Tool Usage
-
-> **Tools used**: Claude (claude.ai)
-
-**Prompt example:**
-
-> "Given this assignment spec, generate the Go `Repository` interface and the `PostgresRepository` struct that implements it using `sqlx`. Include the `ListViewings` method with cursor pagination — `starting_after` is a viewing ID, ordering is `scheduled_at ASC, id ASC`."
-
-**What I accepted as-is**: The interface method signatures and the basic `sqlx` query structure for `GetViewingByID` and `InsertViewing`.
-
-**What I changed**: The generated `ListViewings` SQL used `OFFSET`-based pagination by default. I rewrote it to use proper keyset/cursor pagination (`WHERE id > $1`), which is more correct for large datasets.
-
-**What I threw away**: A suggested `ViewingService` struct that embedded the repository directly as a concrete type rather than the interface — this breaks testability and goes against the spec's explicit requirement.
-
-**Where AI was wrong**: The generated mock setup used an outdated `gomock` API (`gomock.NewController` without `t.Cleanup`). I updated it to the current `go.uber.org/mock` pattern where cleanup is handled automatically.
-
-### Comments
+## Comments
 Use comments sparingly. Only comment complex logic that isn't self-evident.
 Prefer clear naming over explanatory comments.

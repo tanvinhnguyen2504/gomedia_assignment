@@ -18,3 +18,8 @@ CREATE INDEX IF NOT EXISTS ix_viewings_id_scheduled_at
 
 CREATE INDEX IF NOT EXISTS ix_viewings_status_scheduled_at
     ON viewings (status, scheduled_at);
+
+-- Partial Index
+-- CREATE INDEX if NOT EXISTS ix_viewings_status_scheduled_at
+--     ON viewings (scheduled_at)
+--     WHERE status = 'SCHEDUDLE'

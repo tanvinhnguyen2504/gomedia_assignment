@@ -5,31 +5,50 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/httprate"
+	"github.com/jmoiron/sqlx"
 	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 type Handler struct {
 	svc Service
+	db  *sqlx.DB
 }
 
-func NewHandler(svc Service) *Handler {
-	return &Handler{svc: svc}
+func NewHandler(svc Service, db *sqlx.DB) *Handler {
+	return &Handler{svc: svc, db: db}
 }
 
 func (h *Handler) Routes() http.Handler {
 	r := chi.NewRouter()
-	r.Use(httprate.LimitByIP(100, time.Minute))
-	r.Post("/api/viewings", h.createViewing)
-	r.Post("/api/viewings/query", h.listViewings)
-	r.Get("/api/viewings/{id}", h.getViewing)
-	r.Put("/api/viewings", h.bulkUpdate)
+	r.Get("/health", h.health)
 	r.Get("/swagger/*", httpSwagger.WrapHandler)
+	r.Group(func(r chi.Router) {
+		r.Use(httprate.LimitByIP(100, time.Minute))
+		r.Post("/api/viewings", h.createViewing)
+		r.Post("/api/viewings/query", h.listViewings)
+		r.Get("/api/viewings/{id}", h.getViewing)
+		r.Put("/api/viewings", h.bulkUpdate)
+	})
 	return r
+}
+
+// Health godoc
+// @Summary      Health check
+// @Tags         system
+// @Produce      json
+// @Success      200 {object} map[string]string
+// @Failure      503 {object} map[string]string
+// @Router       /health [get]
+func (h *Handler) health(w http.ResponseWriter, r *http.Request) {
+	if err := h.db.PingContext(r.Context()); err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "unhealthy", "reason": "db unreachable"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // CreateViewing godoc

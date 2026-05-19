@@ -23,7 +23,7 @@ func main() {
 
 	viewingRepo := internal.NewPostgresRepository(db)
 	viewingService := internal.NewService(viewingRepo)
-	srv := newHTTPServer(viewingService)
+	srv := newHTTPServer(viewingService, db)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -60,11 +60,11 @@ func connectDB() *sqlx.DB {
 	return db
 }
 
-func newHTTPServer(svc internal.Service) *http.Server {
+func newHTTPServer(svc internal.Service, db *sqlx.DB) *http.Server {
 	port := configs.Getenv("SERVER_PORT", "9999")
 	return &http.Server{
 		Addr:    ":" + port,
-		Handler: internal.NewHandler(svc).Routes(),
+		Handler: internal.NewHandler(svc, db).Routes(),
 	}
 }
 
