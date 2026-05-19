@@ -18,3 +18,6 @@ CREATE INDEX IF NOT EXISTS ix_viewings_id_scheduled_at
 
 CREATE INDEX IF NOT EXISTS ix_viewings_status
     ON viewings (status);
+
+CREATE INDEX IF NOT EXISTS ix_viewings_status_scheduled_at
+    ON viewings (status, scheduled_at);

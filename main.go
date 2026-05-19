@@ -50,6 +50,10 @@ func connectDB() *sqlx.DB {
 		configs.Getenv("DB_SSLMODE", "disable"),
 	)
 	db, err := sqlx.Connect("postgres", dsn)
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(10)
+	db.SetConnMaxLifetime(30 * time.Minute)
+	db.SetConnMaxIdleTime(5 * time.Minute)
 	if err != nil {
 		log.Fatalf("db connect: %v", err)
 	}
