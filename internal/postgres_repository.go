@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/jmoiron/sqlx"
@@ -18,7 +19,12 @@ func NewPostgresRepository(db *sqlx.DB) *PostgresRepository {
 	return &PostgresRepository{db: db}
 }
 
-const BULK_UPDATE_CHUNK_SIZE = 100
+const BULK_UPDATE_CHUNK_SIZE = 1000
+
+type viewingStatusRow struct {
+	ID     int64         `db:"id"`
+	Status ViewingStatus `db:"status"`
+}
 
 var allowedSortFields = map[string]bool{
 	"id":           true,
@@ -107,36 +113,33 @@ func (r *PostgresRepository) ListViewings(ctx context.Context, filter ListFilter
 
 func (r *PostgresRepository) BulkUpdateStatus(ctx context.Context, ids []int64, newStatus ViewingStatus) error {
 	tx, err := r.db.BeginTxx(ctx, nil)
-
 	if err != nil {
 		return err
 	}
-
 	defer tx.Rollback()
 
-	q, args, err := sqlx.In(`SELECT id, status FROM viewings WHERE id IN (?) FOR UPDATE`, ids)
-
-	if err != nil {
-		return err
-	}
-
-	q = tx.Rebind(q)
-	var viewings []Viewing
-	if err := tx.SelectContext(ctx, &viewings, q, args...); err != nil {
-		return err
-	}
-
-	if len(viewings) != len(ids) {
-		return ErrNotFound
-	}
-
-	for _, v := range viewings {
-		if v.Status != StatusScheduled {
-			return ErrInvalidStatus
-		}
-	}
+	slices.Sort(ids)
 
 	for _, chunk := range chunkIDs(ids, BULK_UPDATE_CHUNK_SIZE) {
+		selectQ, args, err := sqlx.In(`SELECT id, status FROM viewings WHERE id IN (?) FOR UPDATE`, chunk)
+		if err != nil {
+			return err
+		}
+		var rows []viewingStatusRow
+		if err := tx.SelectContext(ctx, &rows, tx.Rebind(selectQ), args...); err != nil {
+			return err
+		}
+
+		if len(rows) != len(chunk) {
+			return ErrNotFound
+		}
+
+		for _, v := range rows {
+			if v.Status != StatusScheduled {
+				return ErrInvalidStatus
+			}
+		}
+
 		updateQ, args, err := sqlx.In(`UPDATE viewings SET status = ?, updated_at = NOW() WHERE id IN (?)`, newStatus, chunk)
 		if err != nil {
 			return err
@@ -151,30 +154,26 @@ func (r *PostgresRepository) BulkUpdateStatus(ctx context.Context, ids []int64, 
 
 func (r *PostgresRepository) BulkUpdateNotes(ctx context.Context, ids []int64, newNotes string) error {
 	tx, err := r.db.BeginTxx(ctx, nil)
-
 	if err != nil {
 		return err
 	}
-
 	defer tx.Rollback()
 
-	q, args, err := sqlx.In(`SELECT id FROM viewings WHERE id IN (?) FOR UPDATE`, ids)
-
-	if err != nil {
-		return err
-	}
-
-	q = tx.Rebind(q)
-	var viewings []Viewing
-	if err := tx.SelectContext(ctx, &viewings, q, args...); err != nil {
-		return err
-	}
-
-	if len(viewings) != len(ids) {
-		return ErrNotFound
-	}
+	slices.Sort(ids)
 
 	for _, chunk := range chunkIDs(ids, BULK_UPDATE_CHUNK_SIZE) {
+		selectQ, args, err := sqlx.In(`SELECT id FROM viewings WHERE id IN (?) FOR UPDATE`, chunk)
+		if err != nil {
+			return err
+		}
+		var rows []viewingStatusRow
+		if err := tx.SelectContext(ctx, &rows, tx.Rebind(selectQ), args...); err != nil {
+			return err
+		}
+		if len(rows) != len(chunk) {
+			return ErrNotFound
+		}
+
 		updateQ, args, err := sqlx.In(`UPDATE viewings SET notes = ?, updated_at = NOW() WHERE id IN (?)`, newNotes, chunk)
 		if err != nil {
 			return err
