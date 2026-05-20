@@ -119,6 +119,7 @@ func (r *PostgresRepository) BulkUpdateStatus(ctx context.Context, ids []int64, 
 	defer tx.Rollback()
 
 	slices.Sort(ids)
+	ids = slices.Compact(ids)
 
 	for _, chunk := range chunkIDs(ids, BULK_UPDATE_CHUNK_SIZE) {
 		selectQ, args, err := sqlx.In(`SELECT id, status FROM viewings WHERE id IN (?) FOR UPDATE`, chunk)
@@ -160,6 +161,7 @@ func (r *PostgresRepository) BulkUpdateNotes(ctx context.Context, ids []int64, n
 	defer tx.Rollback()
 
 	slices.Sort(ids)
+	ids = slices.Compact(ids)
 
 	for _, chunk := range chunkIDs(ids, BULK_UPDATE_CHUNK_SIZE) {
 		selectQ, args, err := sqlx.In(`SELECT id FROM viewings WHERE id IN (?) FOR UPDATE`, chunk)
@@ -198,8 +200,12 @@ func buildOrderClause(orders []OrderClause) string {
 		}
 		parts = append(parts, o.Field+" "+string(dir))
 	}
-	parts = append(parts, "id ASC")
-	if len(parts) == 1 {
+	if !slices.ContainsFunc(parts, func(s string) bool {
+		return strings.HasPrefix(s, "id ")
+	}) {
+		parts = append(parts, "id ASC")
+	}
+	if len(parts) == 0 {
 		return "ORDER BY scheduled_at ASC, id ASC"
 	}
 	return "ORDER BY " + strings.Join(parts, ", ")
