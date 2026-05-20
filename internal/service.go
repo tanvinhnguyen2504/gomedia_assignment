@@ -64,7 +64,7 @@ func (s *service) ListViewings(ctx context.Context, req ListViewingsRequest) ([]
 		ScheduledFrom: req.ScheduledFrom,
 		ScheduledTo:   req.ScheduledTo,
 		StartingAfter: req.StartingAfter,
-		Limit:         limit,
+		Limit:         limit + 1,
 		OrderBy:       req.OrderBy,
 	}
 
